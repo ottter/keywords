@@ -1,15 +1,26 @@
 import re
 import cv2
 import spacy
+import requests
 import pytesseract
 import numpy as np
 from pytesseract import Output
 
-# ... or import a folder of example-images
-# for image in os.listdir('example-images'):
-#     img = cv2.imread(f"example-images/{image}")
-#     text = pytesseract.image_to_string(img)
-#     print(text.replace('\n', ' '))
+def keyword_list(processed_text):
+    # Word Filter
+    candidate_pos = ['NOUN', 'PROPN', 'VERB']
+    useful_words, sent_list = [], []
+    doc = nlp(processed_text.replace('\n', ' '))
+    for sent in doc.sents:  # Sentence detection
+        selected_words = []
+        sent_list.append(str(sent))
+        for token in sent:
+            if token.pos_ in candidate_pos and not token.is_stop:
+                selected_words.append(token.lemma_.strip().lower())
+                # Lemmatization - reduce inflected forms of a word but keep meaning (keeps > keep, organizing > organize)
+        useful_words.append(selected_words)
+    keyword_list = [j for i in useful_words for j in i]
+    return keyword_list
 
 # Temporary, won't be used in final program
 def bounding_box(search_term, img_copy):
@@ -37,6 +48,7 @@ def best_match(processed_image):
     for img in processed_image:
         text = pytesseract.image_to_string(img).replace('\n\n', '\n').replace('  ', ' ')
         filter_noise = re.compile(r'\W*\b\w{1,3}\b')
+        # Filter out 1-3 character words to help find best match. NOTE: They are only temporarily removed
         orig_text_pool.append(text)
         filtered_pool.append(filter_noise.sub('', text))
     processed_index = filtered_pool.index(max(filtered_pool, key=len))
@@ -47,9 +59,9 @@ def process_image(img):
     invert = cv2.bitwise_not(img)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gaus = cv2.GaussianBlur(gray, (5, 5), 0)
-    return [img, invert, gaus]
+    return [img, invert, gaus]  # Pass multiple processed images through to later pick the best one
 
-# Find the most dominant color in an image. Potentially useful because tesseract works better with light background
+# Find the most dominant color in an image. Potentially useful because pytesseract works better with light background
 def dominant_color(img):
     img_2d = img.reshape(-1, img.shape[-1])
     col_range = (256, 256, 256)
@@ -61,37 +73,29 @@ def main():
     search_term = 'lamp-light'
 
     # Import image
-    img_orig = cv2.imread("example-images/2.png")
+    url = r'https://i.imgur.com/qspVN6I.png'
+    # url = False
+    if url:
+        resp = requests.get(url, stream=True).raw
+        image = np.asarray(bytearray(resp.read()), dtype="uint8")
+        img_orig = cv2.imdecode(image, cv2.IMREAD_COLOR)
+    else:
+        img_orig = cv2.imread("example-images/5.png")
     img_copy = img_orig.copy()
 
     processed_image = process_image(img_orig)
 
     processed_text = best_match(processed_image)
-    print(processed_text)
-
+    keywords = keyword_list(processed_text)
+    print(keywords)
     bounding_box(search_term, img_copy)
 
-    # Word Filter
-    # candidate_pos = ['NOUN', 'PROPN', 'VERB']
-    # useful_words = []
-    # doc = nlp(gaus_text)
-    # for sent in doc.sents:
-    #     selected_words = []
-    #     for token in sent:
-    #         if token.pos_ in candidate_pos and token.is_stop is False:
-    #             selected_words.append(token)
-    #     useful_words.append(selected_words)
-    # print(useful_words)
+
 
 if __name__ == "__main__":
-    nlp = spacy.load('en_core_web_sm')
-
     # https://github.com/UB-Mannheim/tesseract/wiki
     # Install Tesseract from link above and replace path with your path to tesseract.exe (or add to PATH)
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    nlp = spacy.load('en_core_web_sm')
 
     main()
-
-# https://towardsdatascience.com/textrank-for-keyword-extraction-by-python-c0bae21bcec0
-# https://nanonets.com/blog/ocr-with-tesseract/
-# https://www.youtube.com/watch?v=v9X3j-2p4yA

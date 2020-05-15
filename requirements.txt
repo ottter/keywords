@@ -1,0 +1,6 @@
+re
+cv2
+numpy
+spacy
+requests
+pytesseract
